@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Text Morph</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #000000;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        #container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #000000;
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+
+    <script>
+        // ================================================================
+        // TEXT MORPH - Pure Vanilla JavaScript Version
+        // ================================================================
+        function initTextMorph(container) {
+            // Configuration from the original code
+            const words = ["MEMYCOL'S", "INTERACTIVE", "WEBSITE"];
+            const color = "#FFFFFF";
+            const fontSize = "75px";
+            const fontFamily = "Inter, sans-serif";
+            const fontWeight = 700;
+            const duration = 1; // morph duration
+            const delay = 1.15; // hold duration
+            const ease = [0.44, 0, 0.56, 1]; // cubic-bezier
+
+            // Calculate animation timing
+            const morph = Math.max(0.1, duration);
+            const hold = Math.max(0, delay);
+            const count = words.length;
+            const slot = morph + hold;
+            const cycle = slot * count;
+
+            // Calculate percentages for keyframes
+            const pct = (s) => Math.min(100, (s / cycle) * 100);
+            const mIn = pct(morph);
+            const mHold = pct(morph + hold);
+            const mOut = pct(2 * morph + hold);
+
+            // Convert ease array to cubic-bezier string
+            const easeCSS = Array.isArray(ease) && ease.length === 4 ?
+                `cubic-bezier(${ease.join(",")})` :
+                "ease-in-out";
+
+            // Find longest word for layout stability
+            const longest = words.reduce((acc, w) => w.length > acc.length ? w : acc, "");
+
+            // Create container
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = `
+                    position: relative;
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    overflow: hidden;
+                    user-select: none;
+                    background: #000000;
+                `;
+
+            // Inject keyframe animation
+            const style = document.createElement('style');
+            const animName = `tm-rot-${Date.now()}`;
+            style.textContent = `
+                    @keyframes ${animName} {
+                        0% {
+                            opacity: 0;
+                            filter: blur(20px);
+                            transform: translate(-50%, -50%) scale(0.8);
+                        }
+                        ${mIn}% {
+                            opacity: 1;
+                            filter: blur(0px);
+                            transform: translate(-50%, -50%) scale(1);
+                        }
+                        ${mHold}% {
+                            opacity: 1;
+                            filter: blur(0px);
+                            transform: translate(-50%, -50%) scale(1);
+                        }
+                        ${mOut}%, 100% {
+                            opacity: 0;
+                            filter: blur(20px);
+                            transform: translate(-50%, -50%) scale(1.2);
+                        }
+                    }
+                `;
+            document.head.appendChild(style);
+
+            // Create SVG filter for goo effect
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("style", "position:absolute;width:0;height:0;pointer-events:none");
+            svg.setAttribute("aria-hidden", "true");
+
+            const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+            const filter = document.createElementNS("http://www.w3.org/2000/svg", "filter");
+            const filterId = `tm-thr-${Date.now()}`;
+            filter.setAttribute("id", filterId);
+
+            const colorMatrix = document.createElementNS("http://www.w3.org/2000/svg", "feColorMatrix");
+            colorMatrix.setAttribute("in", "SourceGraphic");
+            colorMatrix.setAttribute("type", "matrix");
+            colorMatrix.setAttribute("values", "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 25 -9");
+
+            const composite = document.createElementNS("http://www.w3.org/2000/svg", "feComposite");
+            composite.setAttribute("in", "SourceGraphic");
+            composite.setAttribute("in2", "goo");
+            composite.setAttribute("operator", "atop");
+
+            filter.appendChild(colorMatrix);
+            filter.appendChild(composite);
+            defs.appendChild(filter);
+            svg.appendChild(defs);
+            wrapper.appendChild(svg);
+
+            // Create text container with filter
+            const textContainer = document.createElement('div');
+            textContainer.style.cssText = `
+                    position: relative;
+                    filter: url(#${filterId});
+                    width: 100%;
+                    height: 100%;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    text-align: center;
+                    font-family: ${fontFamily};
+                    font-weight: ${fontWeight};
+                    font-size: ${fontSize};
+                    color: ${color};
+                    line-height: 1.2em;
+                    letter-spacing: 0em;
+                `;
+
+            const innerContainer = document.createElement('div');
+            innerContainer.style.cssText = `
+                    position: relative;
+                    display: inline-flex;
+                    justify-content: center;
+                    align-items: center;
+                    line-height: 1.2;
+                    min-height: 1.2em;
+                `;
+
+            // Width anchor (invisible spacer)
+            const spacer = document.createElement('span');
+            spacer.style.cssText = `
+                    visibility: hidden;
+                    white-space: nowrap;
+                    display: inline-block;
+                `;
+            spacer.textContent = longest || " ";
+            innerContainer.appendChild(spacer);
+
+            // Add each word with animation
+            words.forEach((word, i) => {
+                const span = document.createElement('span');
+                span.style.cssText = `
+                        position: absolute;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        opacity: 0;
+                        color: ${color};
+                        white-space: nowrap;
+                        animation: ${animName} ${cycle}s ${(slot * i).toFixed(3)}s infinite ${easeCSS};
+                        will-change: opacity, filter, transform;
+                    `;
+                span.textContent = word;
+                innerContainer.appendChild(span);
+            });
+
+            textContainer.appendChild(innerContainer);
+            wrapper.appendChild(textContainer);
+            container.appendChild(wrapper);
+
+            // Handle resize to keep centered
+            const resize = () => {
+                // Text stays centered via flexbox
+            };
+
+            window.addEventListener('resize', resize);
+
+            return () => {
+                window.removeEventListener('resize', resize);
+                style.remove();
+                container.innerHTML = '';
+            };
+        }
+
+        // ================================================================
+        // INITIALIZE
+        // ================================================================
+        const container = document.getElementById('container');
+        if (container) {
+            initTextMorph(container);
+            console.log('✅ Text Morph initialized');
+        }
+    </script>
+</body>
+</html>
