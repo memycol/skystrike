@@ -1,228 +1,1317 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Text Morph</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkyStrike - Futuristic Jet Flight & Combat</title>
+    <!-- Tailwind CSS for UI HUD -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
-        * {
+        body, html {
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-        }
-
-        html, body {
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
-            background: #000000;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #030712;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            user-select: none;
         }
 
-        #container {
-            position: fixed;
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #000000;
+            z-index: 1;
+        }
+
+        /* Glassmorphism styling */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* Glowing text effects */
+        .glow-text-cyan {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.7), 0 0 20px rgba(6, 182, 212, 0.4);
+        }
+        .glow-text-amber {
+            text-shadow: 0 0 10px rgba(245, 158, 11, 0.7), 0 0 20px rgba(245, 158, 11, 0.4);
+        }
+
+        /* Reticle CSS Overlay */
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .hud-shadow {
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        /* Animated pulse */
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgba(56, 189, 248, 0.4); }
+            50% { border-color: rgba(56, 189, 248, 0.9); }
+        }
+        .pulse-box {
+            animation: pulse-border 2s infinite;
         }
     </style>
 </head>
-<body>
-    <div id="container"></div>
+<body class="text-white overflow-hidden">
 
+    <!-- 3D WebGL Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Target Reticle Overlay -->
+    <div class="crosshair flex items-center justify-center pointer-events-none">
+        <div class="w-12 h-12 border-2 border-cyan-400/60 rounded-full flex items-center justify-center relative">
+            <div class="w-2 h-2 bg-cyan-400 rounded-full"></div>
+            <div class="absolute -top-2 w-0.5 h-2 bg-cyan-400"></div>
+            <div class="absolute -bottom-2 w-0.5 h-2 bg-cyan-400"></div>
+            <div class="absolute -left-2 h-0.5 w-2 bg-cyan-400"></div>
+            <div class="absolute -right-2 h-0.5 w-2 bg-cyan-400"></div>
+        </div>
+    </div>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="absolute inset-0 pointer-events-none z-10 flex flex-col justify-between p-6">
+        
+        <!-- Top Bar: Scores & Stats -->
+        <div class="flex justify-between items-start w-full">
+            <!-- Left: Health & Boost -->
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3 w-64">
+                <div>
+                    <div class="flex justify-between text-xs text-cyan-300 font-semibold mb-1">
+                        <span><i class="fa-solid fa-shield-halved mr-1"></i> SHIELD INTEGRITY</span>
+                        <span id="health-val">100%</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-slate-800/80 rounded-full overflow-hidden p-0.5 border border-cyan-500/30">
+                        <div id="health-bar" class="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 rounded-full transition-all duration-300" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs text-amber-300 font-semibold mb-1">
+                        <span><i class="fa-solid fa-bolt mr-1"></i> THRUST BOOST</span>
+                        <span id="boost-val">READY</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-slate-800/80 rounded-full overflow-hidden p-0.5 border border-amber-500/30">
+                        <div id="boost-bar" class="h-full bg-gradient-to-r from-amber-500 to-yellow-300 rounded-full transition-all duration-150" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Score & Multiplier -->
+            <div class="glass-panel p-4 rounded-xl flex flex-col items-end w-56">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Score</div>
+                <div id="score-text" class="text-3xl font-black text-cyan-400 tracking-tight glow-text-cyan">0</div>
+                <div class="flex justify-between w-full mt-2 pt-2 border-t border-slate-700/50 text-xs">
+                    <span class="text-slate-400">HIGH SCORE: <span id="high-score" class="text-amber-400">0</span></span>
+                    <span class="text-slate-400">COMBO: <span id="combo-text" class="text-emerald-400">x1</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Notification Toast -->
+        <div id="message-container" class="self-center text-center pointer-events-none transition-all duration-300 opacity-0 transform translate-y-4">
+            <h2 id="message-title" class="text-2xl font-black tracking-widest text-amber-400 uppercase glow-text-amber">RING COLLECTED!</h2>
+            <p id="message-sub" class="text-sm text-cyan-200 font-medium">+500 PTS | BOOST RECHARGED</p>
+        </div>
+
+        <!-- Bottom Controls & Action Buttons -->
+        <div class="flex justify-end items-end w-full">
+            <!-- Audio & Pause Controls (Interactive) -->
+            <div class="flex items-center gap-3 pointer-events-auto">
+                <button id="btn-audio" class="glass-panel hover:bg-slate-800/80 p-3 rounded-xl text-cyan-400 hover:text-white transition">
+                    <i class="fa-solid fa-volume-high text-lg"></i>
+                </button>
+                <button id="btn-pause" class="glass-panel hover:bg-slate-800/80 p-3 rounded-xl text-cyan-400 hover:text-white transition">
+                    <i class="fa-solid fa-pause text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Start / Game Over Modal Screen -->
+    <div id="modal-screen" class="fixed inset-0 z-20 flex items-center justify-center bg-slate-950/80 backdrop-blur-md transition-opacity duration-300">
+        <div class="glass-panel pulse-box p-8 rounded-2xl max-w-lg w-full text-center relative overflow-hidden border border-cyan-500/40 shadow-2xl">
+            <!-- Decorative backdrop glow -->
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="inline-block p-3 rounded-2xl bg-cyan-500/10 border border-cyan-400/30 text-cyan-400 mb-4">
+                <i class="fa-solid fa-jet-fighter text-3xl"></i>
+            </div>
+
+            <h1 id="modal-title" class="text-3xl font-extrabold tracking-tight text-white mb-2 glow-text-cyan">
+                SKYSTRIKE INTERCEPTOR
+            </h1>
+            <p id="modal-desc" class="text-slate-300 text-sm mb-6 leading-relaxed">
+                Take command of the high-speed futuristic quantum jet. Pilot effortlessly through mountain passes, blast rogue drone targets, and pass through cyber-rings!
+            </p>
+
+            <div class="glass-panel p-4 rounded-xl mb-6 text-left text-xs text-slate-300 space-y-2 border border-slate-700/60">
+                <div class="flex justify-between">
+                    <span class="text-cyan-400 font-semibold"><i class="fa-solid fa-mouse mr-1.5"></i> Pitch & Roll:</span>
+                    <span>Move Mouse (Up = Pitch Up, Down = Pitch Down)</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-cyan-400 font-semibold"><i class="fa-solid fa-crosshairs mr-1.5"></i> Fire Lasers:</span>
+                    <span>Hold Left Click / Spacebar</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-cyan-400 font-semibold"><i class="fa-solid fa-circle-notch mr-1.5"></i> Cyber Rings:</span>
+                    <span>Fly through for Score & Speed Boost</span>
+                </div>
+            </div>
+
+            <button id="btn-start" class="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 text-slate-950 font-bold text-base tracking-wide hover:brightness-110 active:scale-95 transition duration-150 shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-play"></i>
+                <span id="btn-start-text">LAUNCH INTERCEPTOR</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Game Logic JavaScript -->
     <script>
-        // ================================================================
-        // TEXT MORPH - Pure Vanilla JavaScript Version
-        // ================================================================
-        function initTextMorph(container) {
-            // Configuration from the original code
-            const words = ["MEMYCOL'S", "INTERACTIVE", "WEBSITE"];
-            const color = "#FFFFFF";
-            const fontSize = "75px";
-            const fontFamily = "Inter, sans-serif";
-            const fontWeight = 700;
-            const duration = 1; // morph duration
-            const delay = 1.15; // hold duration
-            const ease = [0.44, 0, 0.56, 1]; // cubic-bezier
+        /* =========================================================================
+           1. AUDIO SYNTHESIS SYSTEM (Web Audio API - No External Assets Required)
+           ========================================================================= */
+        class SoundSystem {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+                this.engineGain = null;
+                this.engineOsc = null;
+            }
 
-            // Calculate animation timing
-            const morph = Math.max(0.1, duration);
-            const hold = Math.max(0, delay);
-            const count = words.length;
-            const slot = morph + hold;
-            const cycle = slot * count;
+            init() {
+                if (this.ctx) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
 
-            // Calculate percentages for keyframes
-            const pct = (s) => Math.min(100, (s / cycle) * 100);
-            const mIn = pct(morph);
-            const mHold = pct(morph + hold);
-            const mOut = pct(2 * morph + hold);
+                // Continuous Engine Hum Oscillator
+                try {
+                    this.engineOsc = this.ctx.createOscillator();
+                    const engineFilter = this.ctx.createBiquadFilter();
+                    this.engineGain = this.ctx.createGain();
 
-            // Convert ease array to cubic-bezier string
-            const easeCSS = Array.isArray(ease) && ease.length === 4 ?
-                `cubic-bezier(${ease.join(",")})` :
-                "ease-in-out";
+                    this.engineOsc.type = 'sawtooth';
+                    this.engineOsc.frequency.setValueAtTime(65, this.ctx.currentTime);
 
-            // Find longest word for layout stability
-            const longest = words.reduce((acc, w) => w.length > acc.length ? w : acc, "");
+                    engineFilter.type = 'lowpass';
+                    engineFilter.frequency.setValueAtTime(350, this.ctx.currentTime);
 
-            // Create container
-            const wrapper = document.createElement('div');
-            wrapper.style.cssText = `
-                    position: relative;
-                    width: 100%;
-                    height: 100%;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    overflow: hidden;
-                    user-select: none;
-                    background: #000000;
-                `;
+                    this.engineGain.gain.setValueAtTime(0.08, this.ctx.currentTime);
 
-            // Inject keyframe animation
-            const style = document.createElement('style');
-            const animName = `tm-rot-${Date.now()}`;
-            style.textContent = `
-                    @keyframes ${animName} {
-                        0% {
-                            opacity: 0;
-                            filter: blur(20px);
-                            transform: translate(-50%, -50%) scale(0.8);
-                        }
-                        ${mIn}% {
-                            opacity: 1;
-                            filter: blur(0px);
-                            transform: translate(-50%, -50%) scale(1);
-                        }
-                        ${mHold}% {
-                            opacity: 1;
-                            filter: blur(0px);
-                            transform: translate(-50%, -50%) scale(1);
-                        }
-                        ${mOut}%, 100% {
-                            opacity: 0;
-                            filter: blur(20px);
-                            transform: translate(-50%, -50%) scale(1.2);
-                        }
-                    }
-                `;
-            document.head.appendChild(style);
+                    this.engineOsc.connect(engineFilter);
+                    engineFilter.connect(this.engineGain);
+                    this.engineGain.connect(this.ctx.destination);
 
-            // Create SVG filter for goo effect
-            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            svg.setAttribute("style", "position:absolute;width:0;height:0;pointer-events:none");
-            svg.setAttribute("aria-hidden", "true");
+                    this.engineOsc.start();
+                } catch(e) { console.log('Engine sound init issue', e); }
+            }
 
-            const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-            const filter = document.createElementNS("http://www.w3.org/2000/svg", "filter");
-            const filterId = `tm-thr-${Date.now()}`;
-            filter.setAttribute("id", filterId);
+            playLaser() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
 
-            const colorMatrix = document.createElementNS("http://www.w3.org/2000/svg", "feColorMatrix");
-            colorMatrix.setAttribute("in", "SourceGraphic");
-            colorMatrix.setAttribute("type", "matrix");
-            colorMatrix.setAttribute("values", "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 25 -9");
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
 
-            const composite = document.createElementNS("http://www.w3.org/2000/svg", "feComposite");
-            composite.setAttribute("in", "SourceGraphic");
-            composite.setAttribute("in2", "goo");
-            composite.setAttribute("operator", "atop");
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
 
-            filter.appendChild(colorMatrix);
-            filter.appendChild(composite);
-            defs.appendChild(filter);
-            svg.appendChild(defs);
-            wrapper.appendChild(svg);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
 
-            // Create text container with filter
-            const textContainer = document.createElement('div');
-            textContainer.style.cssText = `
-                    position: relative;
-                    filter: url(#${filterId});
-                    width: 100%;
-                    height: 100%;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    text-align: center;
-                    font-family: ${fontFamily};
-                    font-weight: ${fontWeight};
-                    font-size: ${fontSize};
-                    color: ${color};
-                    line-height: 1.2em;
-                    letter-spacing: 0em;
-                `;
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
 
-            const innerContainer = document.createElement('div');
-            innerContainer.style.cssText = `
-                    position: relative;
-                    display: inline-flex;
-                    justify-content: center;
-                    align-items: center;
-                    line-height: 1.2;
-                    min-height: 1.2em;
-                `;
+            playRingChime() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const freqs = [523.25, 659.25, 783.99, 1046.50]; // C Major arpeggio
+                freqs.forEach((f, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(f, now + i * 0.04);
 
-            // Width anchor (invisible spacer)
-            const spacer = document.createElement('span');
-            spacer.style.cssText = `
-                    visibility: hidden;
-                    white-space: nowrap;
-                    display: inline-block;
-                `;
-            spacer.textContent = longest || " ";
-            innerContainer.appendChild(spacer);
+                    gain.gain.setValueAtTime(0.12, now + i * 0.04);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.04 + 0.25);
 
-            // Add each word with animation
-            words.forEach((word, i) => {
-                const span = document.createElement('span');
-                span.style.cssText = `
-                        position: absolute;
-                        top: 50%;
-                        left: 50%;
-                        transform: translate(-50%, -50%);
-                        opacity: 0;
-                        color: ${color};
-                        white-space: nowrap;
-                        animation: ${animName} ${cycle}s ${(slot * i).toFixed(3)}s infinite ${easeCSS};
-                        will-change: opacity, filter, transform;
-                    `;
-                span.textContent = word;
-                innerContainer.appendChild(span);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now + i * 0.04);
+                    osc.stop(now + i * 0.04 + 0.25);
+                });
+            }
+
+            playExplosion() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * 0.4;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(800, now);
+                filter.frequency.exponentialRampToValueAtTime(40, now + 0.4);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                noise.start(now);
+                noise.stop(now + 0.4);
+            }
+
+            setEnginePitch(speedRatio) {
+                if (this.engineOsc && this.ctx) {
+                    const targetFreq = 60 + speedRatio * 80;
+                    this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.1);
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                if (this.engineGain && this.ctx) {
+                    this.engineGain.gain.setValueAtTime(this.muted ? 0 : 0.08, this.ctx.currentTime);
+                }
+                return this.muted;
+            }
+        }
+
+        const audioSys = new SoundSystem();
+
+
+        /* =========================================================================
+           2. GAME ENGINE & SCENE SETUP
+           ========================================================================= */
+        let scene, camera, renderer;
+        let jetGroup, cockpitGlass, LeftEngineGlow, RightEngineGlow;
+        let lasers = [];
+        let rings = [];
+        let drones = [];
+        let particleExplosions = [];
+        let engineParticles = [];
+        let terrainChunks = [];
+        let starField;
+
+        // Player / Flight State
+        const playerState = {
+            position: new THREE.Vector3(0, 50, 0),
+            velocity: new THREE.Vector3(0, 0, -1),
+            rotation: new THREE.Euler(0, 0, 0, 'YXZ'),
+            speed: 1.8,
+            baseSpeed: 1.8,
+            maxSpeed: 3.2,
+            health: 100,
+            score: 0,
+            highScore: localStorage.getItem('skystrike_hi') || 0,
+            combo: 1,
+            boostTimer: 0,
+            isBoosting: false
+        };
+
+        // Smooth Control Inputs & Hold-to-Fire Tracking
+        const inputState = {
+            targetPitch: 0,
+            targetYaw: 0,
+            targetRoll: 0,
+            mouseX: 0, // normalized -1 to +1
+            mouseY: 0, // normalized -1 to +1
+            isFiring: false,
+            lastFireTime: 0,
+            fireCooldown: 0.22 // Tuned fire rate delay in seconds (~220ms)
+        };
+
+        let gameState = 'START'; // 'START', 'PLAYING', 'PAUSED', 'GAMEOVER'
+
+        // Simplex / Perlin noise helper for mountains
+        function getElevation(x, z) {
+            const freq1 = 0.003, freq2 = 0.008, freq3 = 0.018;
+            let val = Math.sin(x * freq1) * Math.cos(z * freq1) * 85;
+            val += Math.sin(x * freq2 + 1.2) * Math.sin(z * freq2 + 0.8) * 35;
+            val += Math.cos(x * freq3) * Math.sin(z * freq3) * 15;
+            // Keep central corridor lower for comfortable flight
+            const centerDist = Math.abs(x);
+            if (centerDist < 300) {
+                val *= (centerDist / 300);
+            }
+            return Math.max(-20, val);
+        }
+
+        // Initialize Three.js Environment
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x0a0f24, 0.0012);
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 2500);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            container.appendChild(renderer.domElement);
+
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0x38bdf8, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+            sunLight.position.set(200, 500, 100);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 10;
+            sunLight.shadow.camera.far = 1000;
+            const d = 150;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+
+            // Secondary Sci-Fi Accent Lights
+            const cyanLight = new THREE.PointLight(0x06b6d4, 2, 300);
+            cyanLight.position.set(-100, 100, -100);
+            scene.add(cyanLight);
+
+            // Build High-Quality Sci-Fi Jet Model
+            jetGroup = createFuturisticJetModel();
+            scene.add(jetGroup);
+
+            // Create Infinite Environment Details (Terrain Chunks & Stars)
+            createEnvironment();
+
+            // Populate World Interactive Objects
+            spawnWorldObjects();
+
+            // Resize Event Listener
+            window.addEventListener('resize', onWindowResize, false);
+            setupInputListeners();
+
+            // Document High Score Update
+            document.getElementById('high-score').textContent = playerState.highScore;
+        }
+
+
+        /* =========================================================================
+           3. HIGH-QUALITY PROCEDURAL JET MODEL CREATION
+           ========================================================================= */
+        function createFuturisticJetModel() {
+            const jet = new THREE.Group();
+
+            // Premium Materials
+            const hullMaterial = new THREE.MeshStandardMaterial({
+                color: 0x1e293b,
+                metalness: 0.85,
+                roughness: 0.2,
+                flatShading: false
             });
 
-            textContainer.appendChild(innerContainer);
-            wrapper.appendChild(textContainer);
-            container.appendChild(wrapper);
+            const armorPlateMaterial = new THREE.MeshStandardMaterial({
+                color: 0x0f172a,
+                metalness: 0.9,
+                roughness: 0.15
+            });
 
-            // Handle resize to keep centered
-            const resize = () => {
-                // Text stays centered via flexbox
-            };
+            const cyanGlowMat = new THREE.MeshBasicMaterial({
+                color: 0x38bdf8,
+                wireframe: false
+            });
 
-            window.addEventListener('resize', resize);
+            const engineGlowMat = new THREE.MeshBasicMaterial({
+                color: 0x38bdf8,
+                polygonOffset: true,
+                polygonOffsetFactor: -1,
+                polygonOffsetUnits: -1
+            });
 
-            return () => {
-                window.removeEventListener('resize', resize);
-                style.remove();
-                container.innerHTML = '';
-            };
+            const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0x0284c7,
+                metalness: 0.1,
+                roughness: 0.1,
+                transmission: 0.9,
+                transparent: true,
+                opacity: 0.75,
+                ior: 1.5
+            });
+
+            // 1. Central Sleek Fuselage
+            const fuselageGeo = new THREE.ConeGeometry(1.2, 11, 16);
+            fuselageGeo.rotateX(Math.PI / 2);
+            const fuselage = new THREE.Mesh(fuselageGeo, hullMaterial);
+            fuselage.castShadow = true;
+            jet.add(fuselage);
+
+            // Core Body Ridge
+            const bodyGeo = new THREE.BoxGeometry(1.8, 1.1, 7);
+            const body = new THREE.Mesh(bodyGeo, armorPlateMaterial);
+            body.position.set(0, -0.1, 1);
+            body.castShadow = true;
+            jet.add(body);
+
+            // Nose Needle Point Extension
+            const noseNeedleGeo = new THREE.ConeGeometry(0.2, 4, 8);
+            noseNeedleGeo.rotateX(Math.PI / 2);
+            const noseNeedle = new THREE.Mesh(noseNeedleGeo, armorPlateMaterial);
+            noseNeedle.position.set(0, 0, -6.8);
+            jet.add(noseNeedle);
+
+            // 2. Cockpit Energy Canopy
+            const cockpitGeo = new THREE.SphereGeometry(0.85, 16, 16);
+            cockpitGeo.scale(0.8, 0.7, 2.5);
+            cockpitGlass = new THREE.Mesh(cockpitGeo, glassMat);
+            cockpitGlass.position.set(0, 0.75, -1.2);
+            jet.add(cockpitGlass);
+
+            // Interior Cockpit Glow
+            const cockpitCoreGeo = new THREE.BoxGeometry(0.5, 0.3, 1.5);
+            const cockpitCore = new THREE.Mesh(cockpitCoreGeo, cyanGlowMat);
+            cockpitCore.position.set(0, 0.6, -1.2);
+            jet.add(cockpitCore);
+
+            // 3. Main Swept Forward-Slash Wings (Twin Pair)
+            const wingShape = new THREE.Shape();
+            wingShape.moveTo(0, 0);
+            wingShape.lineTo(6.5, 2.5);
+            wingShape.lineTo(6.8, 3.8);
+            wingShape.lineTo(1.2, 3.2);
+            wingShape.lineTo(0, 0);
+
+            const extrudeSettings = { depth: 0.25, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 0.05, bevelThickness: 0.05 };
+            const wingGeo = new THREE.ExtrudeGeometry(wingShape, extrudeSettings);
+            wingGeo.rotateX(Math.PI / 2);
+
+            // Left Wing
+            const leftWing = new THREE.Mesh(wingGeo, hullMaterial);
+            leftWing.position.set(0.6, 0, -0.5);
+            leftWing.castShadow = true;
+            jet.add(leftWing);
+
+            // Right Wing
+            const rightWing = new THREE.Mesh(wingGeo, hullMaterial);
+            rightWing.scale.set(-1, 1, 1);
+            rightWing.position.set(-0.6, 0, -0.5);
+            rightWing.castShadow = true;
+            jet.add(rightWing);
+
+            // Winglets & Wingtip Energy Stripes
+            const wingTipGeo = new THREE.BoxGeometry(0.15, 1.2, 1.8);
+            const leftWinglet = new THREE.Mesh(wingTipGeo, armorPlateMaterial);
+            leftWinglet.position.set(6.7, 0.4, 2.2);
+            jet.add(leftWinglet);
+
+            const rightWinglet = leftWinglet.clone();
+            rightWinglet.position.set(-6.7, 0.4, 2.2);
+            jet.add(rightWinglet);
+
+            // Wing Neon Strip Accents
+            const stripGeo = new THREE.BoxGeometry(5.2, 0.05, 0.15);
+            const leftStrip = new THREE.Mesh(stripGeo, cyanGlowMat);
+            leftStrip.position.set(3.8, 0.12, 1.2);
+            leftStrip.rotation.y = 0.38;
+            jet.add(leftStrip);
+
+            const rightStrip = new THREE.Mesh(stripGeo, cyanGlowMat);
+            rightStrip.position.set(-3.8, 0.12, 1.2);
+            rightStrip.rotation.y = -0.38;
+            jet.add(rightStrip);
+
+            // 4. Front Control Canards
+            const canardGeo = new THREE.BoxGeometry(2.2, 0.1, 1.1);
+            const leftCanard = new THREE.Mesh(canardGeo, armorPlateMaterial);
+            leftCanard.position.set(1.4, 0.1, -3.2);
+            leftCanard.rotation.y = -0.2;
+            jet.add(leftCanard);
+
+            const rightCanard = new THREE.Mesh(canardGeo, armorPlateMaterial);
+            rightCanard.position.set(-1.4, 0.1, -3.2);
+            rightCanard.rotation.y = 0.2;
+            jet.add(rightCanard);
+
+            // 5. Dual Angled V-Tails (Rudders)
+            const tailGeo = new THREE.BoxGeometry(0.15, 2.2, 2.2);
+            const leftTail = new THREE.Mesh(tailGeo, hullMaterial);
+            leftTail.position.set(1.2, 1.2, 3.5);
+            leftTail.rotation.z = -0.35;
+            leftTail.rotation.x = -0.2;
+            jet.add(leftTail);
+
+            const rightTail = new THREE.Mesh(tailGeo, hullMaterial);
+            rightTail.position.set(-1.2, 1.2, 3.5);
+            rightTail.rotation.z = 0.35;
+            rightTail.rotation.x = -0.2;
+            jet.add(rightTail);
+
+            // 6. Underslung Laser Cannons
+            const cannonGeo = new THREE.CylinderGeometry(0.12, 0.12, 3.5, 12);
+            cannonGeo.rotateX(Math.PI / 2);
+
+            const leftCannon = new THREE.Mesh(cannonGeo, armorPlateMaterial);
+            leftCannon.position.set(1.8, -0.4, -0.5);
+            jet.add(leftCannon);
+
+            const rightCannon = new THREE.Mesh(cannonGeo, armorPlateMaterial);
+            rightCannon.position.set(-1.8, -0.4, -0.5);
+            jet.add(rightCannon);
+
+            // Cannon Glow Tips
+            const tipGeo = new THREE.SphereGeometry(0.15, 8, 8);
+            const leftTip = new THREE.Mesh(tipGeo, cyanGlowMat);
+            leftTip.position.set(1.8, -0.4, -2.25);
+            jet.add(leftTip);
+
+            const rightTip = new THREE.Mesh(tipGeo, cyanGlowMat);
+            rightTip.position.set(-1.8, -0.4, -2.25);
+            jet.add(rightTip);
+
+            // 7. Dual Plasma Thruster Nozzles
+            const engineHousingGeo = new THREE.CylinderGeometry(0.7, 0.8, 2.8, 16);
+            engineHousingGeo.rotateX(Math.PI / 2);
+
+            const leftEngine = new THREE.Mesh(engineHousingGeo, armorPlateMaterial);
+            leftEngine.position.set(0.85, 0, 3.6);
+            jet.add(leftEngine);
+
+            const rightEngine = new THREE.Mesh(engineHousingGeo, armorPlateMaterial);
+            rightEngine.position.set(-0.85, 0, 3.6);
+            jet.add(rightEngine);
+
+            // Thruster Internal Glow Discs (Positioned slightly back to avoid Z-Fighting)
+            const glowRingGeo = new THREE.CylinderGeometry(0.55, 0.55, 0.2, 16);
+            glowRingGeo.rotateX(Math.PI / 2);
+
+            LeftEngineGlow = new THREE.Mesh(glowRingGeo, engineGlowMat);
+            LeftEngineGlow.position.set(0.85, 0, 5.02);
+            jet.add(LeftEngineGlow);
+
+            RightEngineGlow = new THREE.Mesh(glowRingGeo, engineGlowMat);
+            RightEngineGlow.position.set(-0.85, 0, 5.02);
+            jet.add(RightEngineGlow);
+
+            // Scale jet slightly for overall proportional feel
+            jet.scale.set(1.3, 1.3, 1.3);
+
+            return jet;
         }
 
-        // ================================================================
-        // INITIALIZE
-        // ================================================================
-        const container = document.getElementById('container');
-        if (container) {
-            initTextMorph(container);
-            console.log('✅ Text Morph initialized');
+
+        /* =========================================================================
+           4. ENVIRONMENT & WORLD OBJECTS (Infinite Procedural Mountain Chunks)
+           ========================================================================= */
+        const CHUNK_SIZE = 800;
+        const CHUNK_SEGMENTS = 32;
+
+        function buildTerrainChunk(chunkX, chunkZ) {
+            const group = new THREE.Group();
+            group.position.set(chunkX * CHUNK_SIZE, -100, chunkZ * CHUNK_SIZE);
+
+            // Mountain Terrain Mesh
+            const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SEGMENTS, CHUNK_SEGMENTS);
+            geo.rotateX(-Math.PI / 2);
+
+            const posAttr = geo.attributes.position;
+            for (let i = 0; i < posAttr.count; i++) {
+                const vx = posAttr.getX(i) + group.position.x;
+                const vz = posAttr.getZ(i) + group.position.z;
+                const height = getElevation(vx, vz);
+                posAttr.setY(i, height);
+            }
+            geo.computeVertexNormals();
+
+            const terrainMat = new THREE.MeshStandardMaterial({
+                color: 0x0f172a,
+                roughness: 0.8,
+                metalness: 0.2,
+                flatShading: true
+            });
+            const terrainMesh = new THREE.Mesh(geo, terrainMat);
+            terrainMesh.receiveShadow = true;
+            group.add(terrainMesh);
+
+            // Glowing Wireframe Grid Overlay for Sci-Fi aesthetic
+            const wireframeMat = new THREE.MeshBasicMaterial({
+                color: 0x06b6d4,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.18
+            });
+            const wireframeMesh = new THREE.Mesh(geo, wireframeMat);
+            wireframeMesh.position.y += 0.2;
+            group.add(wireframeMesh);
+
+            group.userData = { chunkX, chunkZ };
+            scene.add(group);
+            terrainChunks.push(group);
         }
+
+        function createEnvironment() {
+            // Initial 3x3 Mountain Terrain Chunks around origin
+            for (let x = -1; x <= 1; x++) {
+                for (let z = -2; z <= 1; z++) {
+                    buildTerrainChunk(x, z);
+                }
+            }
+
+            // Starfield Background Particle Cloud
+            const starCount = 2000;
+            const starGeo = new THREE.BufferGeometry();
+            const starPositions = new Float32Array(starCount * 3);
+
+            for (let i = 0; i < starCount * 3; i += 3) {
+                starPositions[i] = (Math.random() - 0.5) * 3000;
+                starPositions[i + 1] = Math.random() * 1000 - 100;
+                starPositions[i + 2] = (Math.random() - 0.5) * 3000;
+            }
+
+            starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+            const starMat = new THREE.PointsMaterial({ color: 0xe2e8f0, size: 1.8, transparent: true, opacity: 0.8 });
+            starField = new THREE.Points(starGeo, starMat);
+            scene.add(starField);
+        }
+
+        function updateInfiniteWorld() {
+            const currentChunkX = Math.floor((playerState.position.x + CHUNK_SIZE / 2) / CHUNK_SIZE);
+            const currentChunkZ = Math.floor((playerState.position.z + CHUNK_SIZE / 2) / CHUNK_SIZE);
+
+            // Recycle / Generate terrain chunks dynamically around player position
+            for (let x = currentChunkX - 1; x <= currentChunkX + 1; x++) {
+                for (let z = currentChunkZ - 2; z <= currentChunkZ + 1; z++) {
+                    const exists = terrainChunks.some(c => c.userData.chunkX === x && c.userData.chunkZ === z);
+                    if (!exists) {
+                        buildTerrainChunk(x, z);
+                    }
+                }
+            }
+
+            // Remove chunks that are too far behind or away
+            for (let i = terrainChunks.length - 1; i >= 0; i--) {
+                const c = terrainChunks[i];
+                if (Math.abs(c.userData.chunkX - currentChunkX) > 2 || Math.abs(c.userData.chunkZ - currentChunkZ) > 3) {
+                    scene.remove(c);
+                    terrainChunks.splice(i, 1);
+                }
+            }
+
+            // Reposition Starfield with Player
+            if (starField) {
+                starField.position.copy(playerState.position);
+            }
+        }
+
+        function spawnWorldObjects() {
+            // 1. Spawn Cyber Rings across dynamic 3D paths
+            for (let i = 0; i < 28; i++) {
+                spawnRing();
+            }
+
+            // 2. Spawn Target Enemy Drones
+            for (let i = 0; i < 18; i++) {
+                spawnDrone();
+            }
+        }
+
+        function spawnRing(aheadZ = null) {
+            const ringGroup = new THREE.Group();
+
+            const ringGeo = new THREE.TorusGeometry(12, 0.8, 16, 32);
+            const ringMat = new THREE.MeshStandardMaterial({
+                color: 0x06b6d4,
+                emissive: 0x06b6d4,
+                emissiveIntensity: 0.8,
+                roughness: 0.2,
+                metalness: 0.8
+            });
+
+            const mesh = new THREE.Mesh(ringGeo, ringMat);
+            ringGroup.add(mesh);
+
+            // Inner translucent energy field
+            const fieldGeo = new THREE.CircleGeometry(11.2, 24);
+            const fieldMat = new THREE.MeshBasicMaterial({
+                color: 0x38bdf8,
+                transparent: true,
+                opacity: 0.15,
+                side: THREE.DoubleSide
+            });
+            const field = new THREE.Mesh(fieldGeo, fieldMat);
+            ringGroup.add(field);
+
+            // Dynamic 3D positioning across varied altitudes and wider turns
+            const zPos = aheadZ !== null ? aheadZ : playerState.position.z - (150 + Math.random() * 2200);
+            const spreadX = (Math.random() - 0.5) * 900;
+            const spreadY = Math.max(25, playerState.position.y + (Math.random() - 0.5) * 350);
+
+            ringGroup.position.set(playerState.position.x + spreadX, spreadY, zPos);
+
+            // Random subtle ring tilt for dynamic flight paths
+            ringGroup.rotation.y = (Math.random() - 0.5) * 0.8;
+            ringGroup.rotation.x = (Math.random() - 0.5) * 0.4;
+
+            scene.add(ringGroup);
+
+            rings.push({
+                group: ringGroup,
+                radius: 12,
+                collected: false
+            });
+        }
+
+        function spawnDrone(aheadZ = null) {
+            const droneGroup = new THREE.Group();
+
+            // Sci-fi Target Drone (Octahedron core + orbiting rings)
+            const coreGeo = new THREE.OctahedronGeometry(4, 0);
+            const coreMat = new THREE.MeshStandardMaterial({
+                color: 0xf59e0b,
+                emissive: 0xd97706,
+                emissiveIntensity: 0.6,
+                metalness: 0.9,
+                roughness: 0.1
+            });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            droneGroup.add(core);
+
+            // Shield Frame Ring
+            const ringGeo = new THREE.TorusGeometry(6, 0.3, 8, 16);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xef4444, wireframe: true });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            droneGroup.add(ring);
+
+            const zPos = aheadZ !== null ? aheadZ : playerState.position.z - (200 + Math.random() * 2000);
+            const xPos = playerState.position.x + (Math.random() - 0.5) * 800;
+            const yPos = Math.max(30, playerState.position.y + (Math.random() - 0.5) * 300);
+
+            droneGroup.position.set(xPos, yPos, zPos);
+            scene.add(droneGroup);
+
+            drones.push({
+                group: droneGroup,
+                ringMesh: ring,
+                radius: 5,
+                hp: 2,
+                rotSpeed: 0.02 + Math.random() * 0.03
+            });
+        }
+
+
+        /* =========================================================================
+           5. FLIGHT CONTROLS & DYNAMICS (Smooth, Effortless Handling)
+           ========================================================================= */
+        function setupInputListeners() {
+            // Mouse Movement for Direction Control
+            window.addEventListener('mousemove', (e) => {
+                // Normalize mouse position relative to window center (-1 to +1)
+                inputState.mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+                inputState.mouseY = (e.clientY / window.innerHeight) * 2 - 1;
+            });
+
+            // Mouse Click & Hold Tracking
+            window.addEventListener('mousedown', (e) => {
+                if (e.button === 0) {
+                    inputState.isFiring = true;
+                }
+            });
+            window.addEventListener('mouseup', (e) => {
+                if (e.button === 0) {
+                    inputState.isFiring = false;
+                }
+            });
+
+            // Keyboard Control Shortcuts
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') {
+                    inputState.isFiring = true;
+                }
+                if (e.code === 'KeyP') {
+                    togglePause();
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'Space') {
+                    inputState.isFiring = false;
+                }
+            });
+
+            // UI Button Bindings
+            document.getElementById('btn-start').addEventListener('click', startGame);
+            document.getElementById('btn-audio').addEventListener('click', () => {
+                const isMuted = audioSys.toggleMute();
+                document.getElementById('btn-audio').innerHTML = isMuted ? 
+                    '<i class="fa-solid fa-volume-xmark text-lg text-slate-500"></i>' : 
+                    '<i class="fa-solid fa-volume-high text-lg"></i>';
+            });
+            document.getElementById('btn-pause').addEventListener('click', togglePause);
+        }
+
+        function updateFlightPhysics(delta) {
+            if (gameState !== 'PLAYING') return;
+
+            /* EXACT INTUITIVE CONTROLS REQUIREMENT:
+               Mouse Top (mouseY < 0)    -> Pitch NOSE UP (Climb)
+               Mouse Bottom (mouseY > 0) -> Pitch NOSE DOWN (Dive)
+               Mouse Left (mouseX < 0)   -> Bank & Turn LEFT
+               Mouse Right (mouseX > 0)  -> Bank & Turn RIGHT
+            */
+
+            // Max Pitch Angle (35 degrees), Max Yaw Turn Rate, Max Roll Bank Angle (45 degrees)
+            const targetPitch = -inputState.mouseY * 0.65; // Inverted Y mapping for flight pitch
+            const targetYawRate = -inputState.mouseX * 0.035;
+            const targetRoll = -inputState.mouseX * 0.85;
+
+            // Smooth Interpolation Damping (Silky Smooth Flight Feeling)
+            const smoothness = 5.0 * delta;
+
+            playerState.rotation.x += (targetPitch - playerState.rotation.x) * smoothness;
+            playerState.rotation.z += (targetRoll - playerState.rotation.z) * smoothness;
+            playerState.rotation.y += targetYawRate;
+
+            // Calculate forward direction vector based on orientation
+            const forward = new THREE.Vector3(0, 0, -1);
+            forward.applyEuler(playerState.rotation);
+
+            // Speed Boost Decay Logic
+            if (playerState.isBoosting) {
+                playerState.boostTimer -= delta;
+                playerState.speed = THREE.MathUtils.lerp(playerState.speed, playerState.maxSpeed, delta * 4);
+                if (playerState.boostTimer <= 0) {
+                    playerState.isBoosting = false;
+                }
+            } else {
+                playerState.speed = THREE.MathUtils.lerp(playerState.speed, playerState.baseSpeed, delta * 2);
+            }
+
+            // Update Velocity & Position
+            playerState.velocity.copy(forward).multiplyScalar(playerState.speed);
+            playerState.position.add(playerState.velocity);
+
+            // Check ground elevation collision avoidance
+            const currentGroundY = getElevation(playerState.position.x, playerState.position.z) - 90;
+            if (playerState.position.y < currentGroundY + 12) {
+                playerState.position.y = currentGroundY + 12;
+                playerState.rotation.x = Math.max(0.1, playerState.rotation.x); // Pitch up away from mountain floor
+            }
+
+            // Apply transformed position and pitch/roll tilt to visual Jet model
+            jetGroup.position.copy(playerState.position);
+            jetGroup.rotation.copy(playerState.rotation);
+
+            // Dynamic Camera Follow (Smooth Spring Cam)
+            const cameraOffset = new THREE.Vector3(0, 4.5, 18); // Behind and slightly above jet
+            cameraOffset.applyEuler(playerState.rotation);
+
+            const targetCamPos = playerState.position.clone().add(cameraOffset);
+            camera.position.lerp(targetCamPos, 0.12);
+
+            // Camera looks at point slightly in front of the jet
+            const lookTarget = playerState.position.clone().add(forward.clone().multiplyScalar(40));
+            camera.lookAt(lookTarget);
+
+            // Engine Particle Trail Generation
+            spawnEngineTrailParticles();
+
+            // Update Infinite Mountain Terrain Streaming
+            updateInfiniteWorld();
+
+            // Update Audio Engine Hum Pitch
+            audioSys.setEnginePitch(playerState.speed / playerState.baseSpeed);
+        }
+
+
+        /* =========================================================================
+           6. WEAPONS, PARTICLES & COLLISIONS
+           ========================================================================= */
+        function checkLaserFiring(currentTime) {
+            if (inputState.isFiring && (currentTime - inputState.lastFireTime >= inputState.fireCooldown)) {
+                fireLasers();
+                inputState.lastFireTime = currentTime;
+            }
+        }
+
+        function fireLasers() {
+            audioSys.playLaser();
+
+            // Offset laser positions from dual cannons
+            [-1.8, 1.8].forEach(xOffset => {
+                const laserGeo = new THREE.CylinderGeometry(0.1, 0.1, 6, 8);
+                laserGeo.rotateX(Math.PI / 2);
+                const laserMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+                const laser = new THREE.Mesh(laserGeo, laserMat);
+
+                // Align laser mesh rotation exactly with jet orientation vector
+                laser.quaternion.copy(jetGroup.quaternion);
+
+                // Local offset relative to jet orientation
+                const localPos = new THREE.Vector3(xOffset, -0.4, -2.5);
+                localPos.applyEuler(playerState.rotation);
+                laser.position.copy(playerState.position).add(localPos);
+
+                // Direction vector with laser speed boost
+                const dir = new THREE.Vector3(0, 0, -1).applyEuler(playerState.rotation);
+                laser.userData = {
+                    velocity: dir.multiplyScalar(playerState.speed + 4.5),
+                    life: 0
+                };
+
+                scene.add(laser);
+                lasers.push(laser);
+            });
+        }
+
+        function updateLasers(delta) {
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                const laser = lasers[i];
+                laser.position.add(laser.userData.velocity);
+                laser.userData.life += delta;
+
+                // Collision detection against Drones
+                let hit = false;
+                for (let j = drones.length - 1; j >= 0; j--) {
+                    const drone = drones[j];
+                    const dist = laser.position.distanceTo(drone.group.position);
+
+                    if (dist < drone.radius + 1.5) {
+                        hit = true;
+                        drone.hp -= 1;
+
+                        // Visual spark on hit
+                        createExplosion(laser.position, 0x38bdf8, 8, 0.4);
+
+                        if (drone.hp <= 0) {
+                            // Destroy drone
+                            createExplosion(drone.group.position, 0xf59e0b, 25, 1.2);
+                            audioSys.playExplosion();
+
+                            scene.remove(drone.group);
+                            drones.splice(j, 1);
+
+                            // Score & Combo reward
+                            addScore(250 * playerState.combo);
+                            playerState.combo += 1;
+                            showToast("TARGET DESTROYED!", `+${250 * playerState.combo} PTS | COMBO x${playerState.combo}`);
+
+                            // Respawn drone further ahead endlessly
+                            spawnDrone(playerState.position.z - (1200 + Math.random() * 800));
+                        }
+                        break;
+                    }
+                }
+
+                // Remove laser if hit or expired
+                if (hit || laser.userData.life > 2.0) {
+                    scene.remove(laser);
+                    lasers.splice(i, 1);
+                }
+            }
+        }
+
+        function checkRingCollisions() {
+            for (let i = rings.length - 1; i >= 0; i--) {
+                const ring = rings[i];
+                const dist = playerState.position.distanceTo(ring.group.position);
+
+                if (dist < ring.radius + 1.0 && !ring.collected) {
+                    ring.collected = true;
+
+                    // Trigger Boost & Audio
+                    audioSys.playRingChime();
+                    playerState.isBoosting = true;
+                    playerState.boostTimer = 3.5; // Boost duration in seconds
+
+                    addScore(500 * playerState.combo);
+                    showToast("CYBER RING COLLECTED!", `BOOST ENGAGED! +${500 * playerState.combo} PTS`);
+
+                    // Particle Effect Ring Pickup
+                    createExplosion(ring.group.position, 0x06b6d4, 30, 1.5);
+
+                    // Reposition ring far ahead
+                    scene.remove(ring.group);
+                    rings.splice(i, 1);
+                    spawnRing(playerState.position.z - (1400 + Math.random() * 800));
+                } 
+                // Recalculate rings that are left far behind
+                else if (ring.group.position.z > playerState.position.z + 100) {
+                    scene.remove(ring.group);
+                    rings.splice(i, 1);
+                    spawnRing(playerState.position.z - (1400 + Math.random() * 800));
+                }
+            }
+        }
+
+        function spawnEngineTrailParticles() {
+            const particleGeo = new THREE.SphereGeometry(0.35, 6, 6);
+            const particleMat = new THREE.MeshBasicMaterial({
+                color: playerState.isBoosting ? 0xf59e0b : 0x38bdf8,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            [-0.85, 0.85].forEach(xOffset => {
+                const particle = new THREE.Mesh(particleGeo, particleMat);
+                const offset = new THREE.Vector3(xOffset, 0, 4.8).applyEuler(playerState.rotation);
+                particle.position.copy(playerState.position).add(offset);
+
+                particle.userData = {
+                    life: 0,
+                    maxLife: 0.35,
+                    scale: 1.0
+                };
+
+                scene.add(particle);
+                engineParticles.push(particle);
+            });
+        }
+
+        function updateParticles(delta) {
+            // Update Thruster Trail Particles
+            for (let i = engineParticles.length - 1; i >= 0; i--) {
+                const p = engineParticles[i];
+                p.userData.life += delta;
+                const progress = p.userData.life / p.userData.maxLife;
+
+                p.scale.setScalar(1.0 - progress);
+                p.material.opacity = 0.8 * (1.0 - progress);
+
+                if (p.userData.life >= p.userData.maxLife) {
+                    scene.remove(p);
+                    engineParticles.splice(i, 1);
+                }
+            }
+
+            // Update Explosions
+            for (let i = particleExplosions.length - 1; i >= 0; i--) {
+                const exp = particleExplosions[i];
+                exp.userData.life += delta;
+
+                const positions = exp.geometry.attributes.position.array;
+                const velocities = exp.userData.velocities;
+
+                for (let j = 0; j < velocities.length; j++) {
+                    positions[j * 3] += velocities[j].x * delta * 20;
+                    positions[j * 3 + 1] += velocities[j].y * delta * 20;
+                    positions[j * 3 + 2] += velocities[j].z * delta * 20;
+                }
+                exp.geometry.attributes.position.needsUpdate = true;
+
+                exp.material.opacity = 1.0 - (exp.userData.life / exp.userData.maxLife);
+
+                if (exp.userData.life >= exp.userData.maxLife) {
+                    scene.remove(exp);
+                    particleExplosions.splice(i, 1);
+                }
+            }
+        }
+
+        function createExplosion(pos, colorHex, count = 20, scale = 1.0) {
+            const pGeo = new THREE.BufferGeometry();
+            const pPositions = new Float32Array(count * 3);
+            const velocities = [];
+
+            for (let i = 0; i < count; i++) {
+                pPositions[i * 3] = pos.x;
+                pPositions[i * 3 + 1] = pos.y;
+                pPositions[i * 3 + 2] = pos.z;
+
+                velocities.push(new THREE.Vector3(
+                    (Math.random() - 0.5) * scale,
+                    (Math.random() - 0.5) * scale,
+                    (Math.random() - 0.5) * scale
+                ));
+            }
+
+            pGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+            const pMat = new THREE.PointsMaterial({
+                color: colorHex,
+                size: 1.5 * scale,
+                transparent: true,
+                opacity: 1.0
+            });
+
+            const pSystem = new THREE.Points(pGeo, pMat);
+            pSystem.userData = { life: 0, maxLife: 0.6, velocities: velocities };
+
+            scene.add(pSystem);
+            particleExplosions.push(pSystem);
+        }
+
+
+        /* =========================================================================
+           7. HUD, GAME STATE & UI HELPERS
+           ========================================================================= */
+        function addScore(pts) {
+            playerState.score += pts;
+            document.getElementById('score-text').textContent = playerState.score;
+            document.getElementById('combo-text').textContent = `x${playerState.combo}`;
+
+            if (playerState.score > playerState.highScore) {
+                playerState.highScore = playerState.score;
+                localStorage.setItem('skystrike_hi', playerState.highScore);
+                document.getElementById('high-score').textContent = playerState.highScore;
+            }
+        }
+
+        function showToast(title, sub) {
+            const toast = document.getElementById('message-container');
+            document.getElementById('message-title').textContent = title;
+            document.getElementById('message-sub').textContent = sub;
+
+            toast.classList.remove('opacity-0', 'translate-y-4');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            clearTimeout(toast.timeout);
+            toast.timeout = setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'translate-y-4');
+            }, 1800);
+        }
+
+        function updateHUD() {
+            // Shield / Health bar
+            const healthBar = document.getElementById('health-bar');
+            healthBar.style.width = `${playerState.health}%`;
+            document.getElementById('health-val').textContent = `${Math.round(playerState.health)}%`;
+
+            // Boost indicator bar
+            const boostBar = document.getElementById('boost-bar');
+            const boostVal = document.getElementById('boost-val');
+            if (playerState.isBoosting) {
+                const boostPct = (playerState.boostTimer / 3.5) * 100;
+                boostBar.style.width = `${boostPct}%`;
+                boostVal.textContent = 'ENGAGED!';
+            } else {
+                boostBar.style.width = '100%';
+                boostVal.textContent = 'READY';
+            }
+        }
+
+        function startGame() {
+            audioSys.init();
+
+            // Reset state
+            playerState.position.set(0, 50, 0);
+            playerState.rotation.set(0, 0, 0);
+            playerState.score = 0;
+            playerState.combo = 1;
+            playerState.health = 100;
+            playerState.speed = playerState.baseSpeed;
+
+            document.getElementById('score-text').textContent = '0';
+            document.getElementById('combo-text').textContent = 'x1';
+
+            // Hide modal overlay
+            document.getElementById('modal-screen').classList.add('hidden');
+            gameState = 'PLAYING';
+        }
+
+        function togglePause() {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                document.getElementById('modal-title').textContent = 'FLIGHT PAUSED';
+                document.getElementById('modal-desc').textContent = 'Systems on standby. Click below to resume interceptor flight.';
+                document.getElementById('btn-start-text').textContent = 'RESUME FLIGHT';
+                document.getElementById('modal-screen').classList.remove('hidden');
+            } else if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
+                document.getElementById('modal-screen').classList.add('hidden');
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+
+        /* =========================================================================
+           8. MAIN ANIMATION & GAME LOOP
+           ========================================================================= */
+        let clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = Math.min(clock.getDelta(), 0.1);
+            const elapsedTime = clock.getElapsedTime();
+
+            if (gameState === 'PLAYING') {
+                // Check hold firing loop
+                checkLaserFiring(elapsedTime);
+
+                // Update flight dynamics & camera
+                updateFlightPhysics(delta);
+
+                // Update weapons & collisions
+                updateLasers(delta);
+                checkRingCollisions();
+
+                // Rotate Drones
+                drones.forEach(drone => {
+                    drone.group.rotation.y += drone.rotSpeed;
+                    drone.ringMesh.rotation.x += 0.02;
+                });
+
+                // Update particles
+                updateParticles(delta);
+
+                // Update HUD metrics
+                updateHUD();
+            } else {
+                // Idle camera spin around jet when menu is open
+                if (jetGroup) {
+                    jetGroup.rotation.y += 0.005;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Initialize game scene on window load
+        window.onload = function() {
+            initScene();
+            animate();
+        };
     </script>
 </body>
 </html>
